@@ -25,4 +25,14 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+add_executable(patrol_executable src/patrol.cpp)
+ament_target_dependencies(patrol_executable
+	rclcpp
+	geometry_msgs
+	sensor_msgs)
+
+install(TARGETS
+	patrol_executable
+	DESTINATION lib/${PROJECT_NAME})
+
 ament_package()
