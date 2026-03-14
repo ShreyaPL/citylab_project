@@ -56,17 +56,29 @@ private:
         else
         {
             // get largest distance ray
-            double max_distance = scan_.range_min;
-            int max_index;
+            double max_distance = -1.0;
+            int max_index = front_index;
             for(int i = start_index; i <= end_index; i++)
             {
-                if(scan_.ranges[i] > max_distance){
-                    max_distance = scan_.ranges[i];
+                double ray = scan_.ranges[i];
+
+                // check for valid ray value in scan_.ranges
+                if(std::isnan(ray) || std::isinf(ray)){ continue;}
+                if(ray < scan_.range_min || ray > scan_.range_max){continue;}
+
+                if(ray > max_distance){
+                    max_distance = ray;
                     max_index = i;
                 }
             }
             // angle from index
-            direction_ = scan_.angle_min + (max_index * scan_.angle_increment);
+            if(max_distance < 0.0)
+            {
+                direction_ = 0.0;
+            }
+            else {
+                direction_ = scan_.angle_min + (max_index * scan_.angle_increment);
+            }
             RCLCPP_INFO(this->get_logger(), "Direction of maximum distance: %0.2f", direction_);
 
             publish_msg();
