@@ -28,9 +28,9 @@ private:
         double front_right = -M_PI/2.0f;
         double front = 0.0;
 
-        int start_index = static_cast<int>(front_right - scan_.angle_min) / scan_.angle_increment;
-        int end_index = static_cast<int>(front_left - scan_.angle_min) / scan_.angle_increment;
-        int front_index = static_cast<int>(front - scan_.angle_min) / scan_.angle_increment;
+        int start_index = static_cast<int>((front_right - scan_.angle_min) / scan_.angle_increment);
+        int end_index = static_cast<int>((front_left - scan_.angle_min) / scan_.angle_increment);
+        int front_index = static_cast<int>((front - scan_.angle_min) / scan_.angle_increment);
         RCLCPP_INFO(this->get_logger(), "Front index: %d", front_index);
 
         double distance_front = scan_.ranges[front_index];
