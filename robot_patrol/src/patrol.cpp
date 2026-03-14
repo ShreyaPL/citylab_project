@@ -1,4 +1,4 @@
-#include "geometry_msgs/msg/detail/twist__struct.hpp"
+#include "rclcpp/utilities.hpp"
 #include <functional>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -12,16 +12,16 @@ public:
     {
         scan_subscriber_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/fastbot_1/scan", 10, 
-            &Patrol::scan_callback, this, std::placeholders::_1);
+            std::bind(&Patrol::scan_callback, this, std::placeholders::_1));
         
         //publisher object
-        publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+        publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("fastbot_1/cmd_vel", 10);
     }
 
 private:
-    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr & msg)
+    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
     {
-        scan_ = msg;
+        scan_ = *msg;
 
         // Using only the front 180 degrees: [-pi/2, pi/2]
         double front_left = M_PI/2.0f;
@@ -49,6 +49,8 @@ private:
         {
             // move forward
             direction_ = 0.0;
+            RCLCPP_INFO(this->get_logger(), "Moving Forward...");
+
             publish_msg();
         }
         else
@@ -75,7 +77,15 @@ private:
         geometry_msgs::msg::Twist msg;
         msg.linear.x = linear_;
         msg.angular.z = direction_ / 2.0f;
-        publisher_.publish(msg);
+        publisher_->publish(msg);
+    }
+
+    void stop_robot()
+    {
+        geometry_msgs::msg::Twist msg;
+        msg.linear.x = 0.0;
+        msg.angular.z = 0.0;
+        publisher_->publish(msg);
     }
 
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_subscriber_;
@@ -86,3 +96,12 @@ private:
     double linear_;
     double direction_;
 };
+
+int main(int argc, char** argv){
+    rclcpp::init(argc, argv);
+
+    auto patrol_node = std::make_shared<Patrol>();
+    rclcpp::spin(patrol_node);
+    rclcpp::shutdown();
+    return 0;
+}
