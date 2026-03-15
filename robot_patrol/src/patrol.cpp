@@ -1,5 +1,6 @@
 #include "rclcpp/utilities.hpp"
 #include <chrono>
+#include <algorithm>
 #include <functional>
 #include <limits>
 #include <rclcpp/rclcpp.hpp>
@@ -20,7 +21,7 @@ public:
         
         //publisher object
         publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
-            "fastbot_1/cmd_vel", 10);
+            "/fastbot_1/cmd_vel", 10);
 
         // timer object
         timer_ = this->create_wall_timer(
@@ -29,16 +30,6 @@ public:
     }
 
 private:
-    bool is_valid_ray(double r) const
-    {
-        /* This function checks for valid ray */
-        if(std::isnan(r) || std::isinf(r))
-        {
-            return false;
-        }
-        return r >= scan_.range_min && r <= scan_.range_max;
-    }
-
     int angle_to_index(double angle) const
     {
         int idx = static_cast<int>((angle - scan_.angle_min) / scan_.angle_increment);
@@ -124,6 +115,10 @@ private:
     {
         scan_ = *msg;
 
+        if(scan_.ranges.empty()){
+            return;
+        }
+
         // Using only the front 180 degrees: [-pi/2, pi/2]
         const double front_left = M_PI/2.0f;
         const double front_right = -M_PI/2.0f;
@@ -165,14 +160,14 @@ private:
                     best_score = score;
                     best_index = i;
                 }
-                if(best_score < 0.0){
-                    direction_ = 0.0;
-                }
-                else {
-                    direction_ = index_to_angle(best_index);
-                }
-                RCLCPP_INFO(this->get_logger(),"Best_score=%.3f  best_angle=%.3f",best_score,direction_);
             }
+
+            if(best_score < 0.0){
+                direction_ = 0.0;
+            }else {
+                direction_ = index_to_angle(best_index);
+            }
+            RCLCPP_INFO(this->get_logger(),"Best_score=%.3f  best_angle=%.3f",best_score,direction_);
         }
     }
 
