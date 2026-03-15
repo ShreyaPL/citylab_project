@@ -1,4 +1,5 @@
 #include "rclcpp/utilities.hpp"
+#include <chrono>
 #include <functional>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -16,6 +17,11 @@ public:
         
         //publisher object
         publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("fastbot_1/cmd_vel", 10);
+
+        // timer object
+        timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(100),
+            std::bind(&Patrol::control_callback, this));
     }
 
 private:
@@ -24,20 +30,21 @@ private:
         scan_ = *msg;
 
         // Using only the front 180 degrees: [-pi/2, pi/2]
-        double front_left = M_PI/2.0f;
-        double front_right = -M_PI/2.0f;
-        double front = 0.0;
+        const double front_left = M_PI/2.0f;
+        const double front_right = -M_PI/2.0f;
+        const double front = 0.0;
 
         int start_index = static_cast<int>((front_right - scan_.angle_min) / scan_.angle_increment);
         int end_index = static_cast<int>((front_left - scan_.angle_min) / scan_.angle_increment);
         int front_index = static_cast<int>((front - scan_.angle_min) / scan_.angle_increment);
+        
         RCLCPP_INFO(this->get_logger(), "Front index: %d", front_index);
 
         double distance_front = scan_.ranges[front_index];
+        
         // check if distance_front is valid value
         if(std::isnan(distance_front) || distance_front < scan_.range_min)
         { 
-            stop_robot();
             return;
         }
         if(std::isinf(distance_front) || distance_front > scan_.range_max)
@@ -50,8 +57,6 @@ private:
             // move forward
             direction_ = 0.0;
             RCLCPP_INFO(this->get_logger(), "Moving Forward...");
-
-            publish_msg();
         }
         else
         {
@@ -79,29 +84,20 @@ private:
             else {
                 direction_ = scan_.angle_min + (max_index * scan_.angle_increment);
             }
-            RCLCPP_INFO(this->get_logger(), "Direction of maximum distance: %0.2f", direction_);
-
-            publish_msg();
+            RCLCPP_INFO(this->get_logger(), "Max distance: %.2f, direction: %.2f" , max_distance, direction_);
         }
     }
 
-    void publish_msg(){
+    void control_callback(){
         geometry_msgs::msg::Twist msg;
         msg.linear.x = linear_;
         msg.angular.z = direction_ / 2.0f;
         publisher_->publish(msg);
     }
 
-    void stop_robot()
-    {
-        geometry_msgs::msg::Twist msg;
-        msg.linear.x = 0.0;
-        msg.angular.z = 0.0;
-        publisher_->publish(msg);
-    }
-
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_subscriber_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr publisher_;
+    rclcpp::TimerBase::SharedPtr timer_;
 
     sensor_msgs::msg::LaserScan scan_;
     
