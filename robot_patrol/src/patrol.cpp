@@ -1,6 +1,7 @@
 #include "rclcpp/utilities.hpp"
 #include <chrono>
 #include <functional>
+#include <limits>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <geometry_msgs/msg/twist.hpp>
@@ -9,22 +10,116 @@
 class Patrol : public rclcpp::Node{
 public:
     Patrol()
-    : Node("node_name"), linear_(0.1), direction_(0.0)
+    : Node("robot_patrol_node"), 
+     linear_(0.1), 
+     direction_(0.0)
     {
         scan_subscriber_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/fastbot_1/scan", 10, 
             std::bind(&Patrol::scan_callback, this, std::placeholders::_1));
         
         //publisher object
-        publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("fastbot_1/cmd_vel", 10);
+        publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
+            "fastbot_1/cmd_vel", 10);
 
         // timer object
         timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(100),
+            std::chrono::milliseconds(100),     //10 Hz
             std::bind(&Patrol::control_callback, this));
     }
 
 private:
+    bool is_valid_ray(double r) const
+    {
+        /* This function checks for valid ray */
+        if(std::isnan(r) || std::isinf(r))
+        {
+            return false;
+        }
+        return r >= scan_.range_min && r <= scan_.range_max;
+    }
+
+    int angle_to_index(double angle) const
+    {
+        int idx = static_cast<int>((angle - scan_.angle_min) / scan_.angle_increment);
+        return idx;
+    }
+
+    double index_to_angle(int index) const
+    {
+        double angle = scan_.angle_min + index * scan_.angle_increment;
+        return angle;
+    }
+
+    double get_sector_min_distance(double center_angle, double half_width_rad)
+    {
+        int center_index = angle_to_index(center_angle);
+        int half_window = static_cast<int>(half_width_rad/ scan_.angle_increment);
+
+        double min_distance = scan_.range_max;
+        bool found_valid = false;
+
+        for(int i = center_index - half_window; i <= center_index + half_window; i++)
+        {
+            if(i < 0 || i >= static_cast<int>(scan_.ranges.size())){
+                continue;
+            }
+            double r = scan_.ranges[i];
+            if(std::isinf(r)){
+                r = scan_.range_max;
+            }
+            if(std::isnan(r)){
+                continue;
+            }
+            if(r < scan_.range_min || r > scan_.range_max){
+                continue;
+            }
+
+            found_valid = true;
+            min_distance = std::min(min_distance, r);
+        }
+
+        if(!found_valid){
+            return -1.0f;
+        }
+        return min_distance;
+    }
+
+    double score_direction(int candidate_index, int neighborhood_half_window)
+    {
+        // This is to avoid narrow gaps
+        double min_distance = std::numeric_limits<double>::infinity();
+        bool found_valid = false;
+
+        for(int j = candidate_index - neighborhood_half_window;
+            j <= candidate_index + neighborhood_half_window; j++)
+        {
+            if(j < 0 || j >= static_cast<int>(scan_.ranges.size())){
+                continue;
+            }
+
+            double r = scan_.ranges[j];
+            if(std::isinf(r)){
+                r = scan_.range_max;
+            }
+            if(std::isnan(r)){
+                continue;
+            }
+            if(r < scan_.range_min || r > scan_.range_max){
+                continue;
+            }
+
+            found_valid = true;
+            min_distance = std::min(min_distance, r);
+        }
+
+        if(!found_valid){
+            return -1.0f;
+        }
+
+        return min_distance;
+    }
+
     void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
     {
         scan_ = *msg;
@@ -34,64 +129,58 @@ private:
         const double front_right = -M_PI/2.0f;
         const double front = 0.0;
 
-        int start_index = static_cast<int>((front_right - scan_.angle_min) / scan_.angle_increment);
-        int end_index = static_cast<int>((front_left - scan_.angle_min) / scan_.angle_increment);
-        int front_index = static_cast<int>((front - scan_.angle_min) / scan_.angle_increment);
-        
-        RCLCPP_INFO(this->get_logger(), "Front index: %d", front_index);
+        int start_index = angle_to_index(front_right);
+        int end_index = angle_to_index(front_left);      
 
-        double distance_front = scan_.ranges[front_index];
+        // Use front sector
+        double distance_front = get_sector_min_distance(front, 10.0 * M_PI/180); //sector of +/- 10 deg
+        RCLCPP_INFO(this->get_logger(), "Front distance: %.2f  direction: %.2f", distance_front, direction_);
         
-        // check if distance_front is valid value
-        if(std::isnan(distance_front) || distance_front < scan_.range_min)
-        { 
+        if (distance_front < 0.0) {
+            // No reliable front data.
+            direction_ = 0.0;
             return;
-        }
-        if(std::isinf(distance_front) || distance_front > scan_.range_max)
-        {
-            distance_front = scan_.range_max;
         }
 
         if (distance_front > 0.35)
         {
             // move forward
             direction_ = 0.0;
-            RCLCPP_INFO(this->get_logger(), "Moving Forward...");
+            return;
         }
         else
         {
-            // get largest distance ray
-            double max_distance = -1.0;
-            int max_index = front_index;
+            // obstacle ahead - search for safest direction
+            double best_score = -1.0;
+            int best_index = angle_to_index(0.0);
+
+            int neighborhood_half_window =
+            std::max(1, static_cast<int>((8.0 * M_PI / 180.0) / scan_.angle_increment));
+
             for(int i = start_index; i <= end_index; i++)
             {
-                double ray = scan_.ranges[i];
+                double score = score_direction(i, neighborhood_half_window);
 
-                // check for valid ray value in scan_.ranges
-                if(std::isnan(ray) || std::isinf(ray)){ continue;}
-                if(ray < scan_.range_min || ray > scan_.range_max){continue;}
-
-                if(ray > max_distance){
-                    max_distance = ray;
-                    max_index = i;
+                if (score > best_score) {
+                    best_score = score;
+                    best_index = i;
                 }
+                if(best_score < 0.0){
+                    direction_ = 0.0;
+                }
+                else {
+                    direction_ = index_to_angle(best_index);
+                }
+                RCLCPP_INFO(this->get_logger(),"Best_score=%.3f  best_angle=%.3f",best_score,direction_);
             }
-            // angle from index
-            if(max_distance < 0.0)
-            {
-                direction_ = 0.0;
-            }
-            else {
-                direction_ = scan_.angle_min + (max_index * scan_.angle_increment);
-            }
-            RCLCPP_INFO(this->get_logger(), "Max distance: %.2f, direction: %.2f" , max_distance, direction_);
         }
     }
 
-    void control_callback(){
+    void control_callback()
+    {
         geometry_msgs::msg::Twist msg;
         msg.linear.x = linear_;
-        msg.angular.z = direction_ / 2.0f;
+        msg.angular.z = direction_ / 2.0;
         publisher_->publish(msg);
     }
 
