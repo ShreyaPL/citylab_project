@@ -16,12 +16,12 @@ public:
      direction_(0.0)
     {
         scan_subscriber_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-            "/fastbot_1/scan", 10, 
+            "/scan", 10, 
             std::bind(&Patrol::scan_callback, this, std::placeholders::_1));
         
         //publisher object
         publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
-            "/fastbot_1/cmd_vel", 10);
+            "/cmd_vel_safe", 10);
 
         // timer object
         timer_ = this->create_wall_timer(
@@ -220,6 +220,7 @@ private:
     
     double linear_;
     double direction_;
+    bool prefer_clockwise_;
 };
 
 int main(int argc, char** argv){
