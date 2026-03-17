@@ -146,7 +146,7 @@ private:
             return;
         }
 
-        if (distance_front > 0.35)
+        if (distance_front > 0.50)      // increase distance to front to tackle latency
         {
             // move 
             RCLCPP_INFO(this->get_logger(),
