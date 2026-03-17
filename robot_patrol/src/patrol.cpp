@@ -167,28 +167,9 @@ private:
             for(int i = start_index; i <= end_index; i++)
             {
                 double score = score_direction(i, neighborhood_half_window);
-
-                if (score < 0.0)
-                {
-                    continue;
-                }
-
-                double angle = index_to_angle(i);
                 
-                // Small directional bias
-                double biased_score = score;
-                if(prefer_clockwise_){
-                    if(angle < 0.0){
-                        biased_score += 0.05;
-                    }
-                }
-                else{
-                    if(angle > 0.0){
-                        biased_score += 0.05;
-                    }
-                }
-                if (biased_score > best_score) {
-                    best_score = biased_score;
+                if (score > best_score) {
+                    best_score = score;
                     best_index = i;
                 }
             }
@@ -220,7 +201,6 @@ private:
     
     double linear_;
     double direction_;
-    bool prefer_clockwise_;
 };
 
 int main(int argc, char** argv){
