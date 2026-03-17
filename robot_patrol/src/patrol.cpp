@@ -27,6 +27,11 @@ public:
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(100),     //10 Hz
             std::bind(&Patrol::control_callback, this));
+        
+        RCLCPP_INFO(this->get_logger(), "Robot patrol node started.");
+        RCLCPP_INFO(this->get_logger(), "Subscribed to /fastbot_1/scan");
+        RCLCPP_INFO(this->get_logger(), "Publishing velocity commands to /fastbot_1/cmd_vel");
+        RCLCPP_INFO(this->get_logger(), "Control loop frequency: 10 Hz");
     }
 
 private:
@@ -116,6 +121,7 @@ private:
         scan_ = *msg;
 
         if(scan_.ranges.empty()){
+            RCLCPP_WARN(this->get_logger(), "Received LaserScan with empty ranges.");
             return;
         }
 
@@ -129,17 +135,23 @@ private:
 
         // Use front sector
         double distance_front = get_sector_min_distance(front, 10.0 * M_PI/180); //sector of +/- 10 deg
-        RCLCPP_INFO(this->get_logger(), "Front distance: %.2f  direction: %.2f", distance_front, direction_);
-        
+        // RCLCPP_DEBUG(this->get_logger(),
+        //              "Front sector distance: %.2f m, current direction: %.2f rad",
+        //              distance_front, direction_);
+
         if (distance_front < 0.0) {
             // No reliable front data.
+            RCLCPP_WARN(this->get_logger(), "No reliable front-sector laser data available.");
             direction_ = 0.0;
             return;
         }
 
         if (distance_front > 0.35)
         {
-            // move forward
+            // move 
+            RCLCPP_INFO(this->get_logger(),
+                        "Path clear. front_distance=%.2f m. Moving straight.",
+                        distance_front);
             direction_ = 0.0;
             return;
         }
@@ -163,6 +175,8 @@ private:
             }
 
             if(best_score < 0.0){
+                RCLCPP_WARN(this->get_logger(),
+                        "No valid safe direction found. Defaulting to straight.");
                 direction_ = 0.0;
             }else {
                 direction_ = index_to_angle(best_index);
