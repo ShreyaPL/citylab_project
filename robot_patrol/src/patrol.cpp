@@ -168,8 +168,27 @@ private:
             {
                 double score = score_direction(i, neighborhood_half_window);
 
-                if (score > best_score) {
-                    best_score = score;
+                if (score < 0.0)
+                {
+                    continue;
+                }
+
+                double angle = index_to_angle(i);
+                
+                // Small directional bias
+                double biased_score = score;
+                if(prefer_clockwise_){
+                    if(angle < 0.0){
+                        biased_score += 0.05;
+                    }
+                }
+                else{
+                    if(angle > 0.0){
+                        biased_score += 0.05;
+                    }
+                }
+                if (biased_score > best_score) {
+                    best_score = biased_score;
                     best_index = i;
                 }
             }
